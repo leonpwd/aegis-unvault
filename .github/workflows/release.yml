@@ -1,0 +1,52 @@
+name: Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build and Release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build release
+        run: cargo build --release
+      - name: Prepare binary
+        run: |
+          mkdir -p dist
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp target/release/*.exe dist/
+          else
+            cp target/release/${{ github.event.repository.name }} dist/
+          fi
+        shell: bash
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ runner.os }}-binary
+          path: dist/
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
