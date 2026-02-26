@@ -1,0 +1,120 @@
+name: Update Homebrew Tap
+
+on:
+  #release:
+    #types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.2.3)'
+        required: false
+        default: ''
+
+jobs:
+  update-tap:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get release info
+        id: release
+        run: |
+          set -euo pipefail
+          # Determine tag from event, release payload, or workflow_dispatch input
+          TAG=${GITHUB_REF#refs/tags/}
+
+          if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "$GITHUB_EVENT_PATH" ]; then
+            # workflow_dispatch input takes precedence
+            INPUT_TAG=$(jq -r '.inputs.tag // empty' < "$GITHUB_EVENT_PATH" || true)
+            if [ -n "$INPUT_TAG" ]; then
+              TAG="$INPUT_TAG"
+            fi
+            # release payload fallback
+            if [ -z "${TAG:-}" ]; then
+              TAG=$(jq -r '.release.tag_name // empty' < "$GITHUB_EVENT_PATH" || true)
+            fi
+          fi
+
+          # Fallback to querying latest release via API
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            TAG=$(curl -s -H "Accept: application/vnd.github+json" https://api.github.com/repos/leonpwd/aegis-unvault/releases/latest | jq -r .tag_name)
+          fi
+
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "Could not determine TAG from event or API" >&2
+            exit 1
+          fi
+
+          # Ensure tag starts with 'v'
+          if [[ "$TAG" != v* ]]; then
+            TAG="v${TAG}"
+          fi
+
+          VERSION=${TAG#v}
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+          # Poll release assets until the build job uploads them (timeout ~5 minutes)
+          API_URL="https://api.github.com/repos/leonpwd/aegis-unvault/releases/tags/${TAG}"
+          tries=0
+          MAX_TRIES=30
+          SLEEP_SECONDS=10
+          while [ $tries -lt $MAX_TRIES ]; do
+            RELEASE_JSON=$(curl -s "$API_URL") || RELEASE_JSON=""
+            MACOS_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[]? | select(.name | test("macos"; "i")) | .browser_download_url' | head -n1 || true)
+            LINUX_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[]? | select(.name | test("linux"; "i")) | .browser_download_url' | head -n1 || true)
+
+            if [ -n "$MACOS_URL" ] && [ -n "$LINUX_URL" ]; then
+              echo "Found assets after $tries tries"
+              break
+            fi
+
+            tries=$((tries+1))
+            echo "Assets not yet available (try $tries/$MAX_TRIES), sleeping ${SLEEP_SECONDS}s..."
+            sleep $SLEEP_SECONDS
+          done
+
+          if [ -z "$MACOS_URL" ] || [ -z "$LINUX_URL" ]; then
+            echo "Timed out waiting for release assets for ${TAG}" >&2
+            echo "Last RELEASE_JSON: $RELEASE_JSON" >&2
+            exit 1
+          fi
+
+          echo "LINUX_URL=$LINUX_URL" >> $GITHUB_ENV
+          echo "MACOS_URL=$MACOS_URL" >> $GITHUB_ENV
+
+      - name: Download assets
+        run: |
+          curl -L -o linux.tar.gz "$LINUX_URL"
+          curl -L -o macos.tar.gz "$MACOS_URL"
+
+          echo "LINUX_SHA=$(sha256sum linux.tar.gz | cut -d ' ' -f1)" >> $GITHUB_ENV
+          echo "MACOS_SHA=$(sha256sum macos.tar.gz | cut -d ' ' -f1)" >> $GITHUB_ENV
+
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
+        with:
+          repository: leonpwd/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update formula
+        run: |
+          cd tap
+
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" aegis-unvault.rb
+
+          # macOS arm64 (premier sha256 rencontré)
+          perl -0777 -pe 's|(url\s*".*macos.*arm.*"\n\s*sha256\s*")[^"]*(")|$1.$ENV{MACOS_SHA}.$2|ge' -i aegis-unvault.rb
+
+          # linux x86_64 (deuxième sha256)
+          perl -0777 -pe 's|(url\s*".*linux.*x86_64.*"\n\s*sha256\s*")[^"]*(")|$1.$ENV{LINUX_SHA}.$2|ge' -i aegis-unvault.rb
+
+      - name: Commit & push
+        run: |
+          cd tap
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add aegis-unvault.rb
+          git commit -m "Update aegis-unvault to ${TAG}" || echo "No changes"
+          git push
