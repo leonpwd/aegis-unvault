@@ -12,7 +12,7 @@ pub fn decrypt_vault(vault: &Vault, password: &[u8]) -> Result<String, String> {
         let salt = match hex::decode(&slot.salt) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("Salt hex invalide: {}", e);
+                eprintln!("Invalid salt hex: {}", e);
                 continue;
             }
         };
@@ -20,7 +20,7 @@ pub fn decrypt_vault(vault: &Vault, password: &[u8]) -> Result<String, String> {
         let params = match ScryptParams::new(log_n, slot.r, slot.p, 32) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("Paramètres Scrypt invalides: {:?}", e);
+                eprintln!("Invalid scrypt parameters: {:?}", e);
                 continue;
             }
         };
@@ -28,35 +28,35 @@ pub fn decrypt_vault(vault: &Vault, password: &[u8]) -> Result<String, String> {
         match scrypt(password, &salt, &params, &mut key) {
             Ok(_) => {},
             Err(e) => {
-                eprintln!("Erreur Scrypt: {:?}", e);
+                eprintln!("Scrypt error: {:?}", e);
                 continue;
             }
         }
         let nonce_vec = match hex::decode(&slot.key_params.nonce) {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("Nonce hex invalide: {}", e);
+                eprintln!("Invalid nonce hex: {}", e);
                 continue;
             }
         };
         let nonce: [u8; 12] = match nonce_vec.try_into() {
             Ok(arr) => arr,
             Err(_) => {
-                eprintln!("Nonce hex invalide (taille)");
+                eprintln!("Invalid nonce hex (size)");
                 continue;
             }
         };
         let mut ciphertext = match hex::decode(&slot.key) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("Key hex invalide: {}", e);
+                eprintln!("Invalid key hex: {}", e);
                 continue;
             }
         };
         let tag = match hex::decode(&slot.key_params.tag) {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("Tag hex invalide: {}", e);
+                eprintln!("Invalid tag hex: {}", e);
                 continue;
             }
         };
@@ -68,26 +68,26 @@ pub fn decrypt_vault(vault: &Vault, password: &[u8]) -> Result<String, String> {
                 break;
             },
             Err(e) => {
-                eprintln!("Erreur de déchiffrement master_key: {:?}", e);
+                eprintln!("Master key decryption error: {:?}", e);
                 continue;
             },
         }
     }
-    let master_key = master_key.ok_or("Impossible de déchiffrer la master key avec ce mot de passe")?;
-    let content = general_purpose::STANDARD.decode(&vault.db).map_err(|_| "Base64 invalide")?;
+    let master_key = master_key.ok_or("Unable to decrypt master key with provided password")?;
+    let content = general_purpose::STANDARD.decode(&vault.db).map_err(|_| "Invalid base64")?;
     let params = &vault.header.params;
     let nonce_vec = match hex::decode(&params.nonce) {
         Ok(v) => v,
-        Err(_) => return Err("Nonce hex invalide".to_string()),
+        Err(_) => return Err("Invalid nonce hex".to_string()),
     };
     let nonce: [u8; 12] = match nonce_vec.try_into() {
         Ok(arr) => arr,
-        Err(_) => return Err("Taille de nonce incorrecte".to_string()),
+        Err(_) => return Err("Incorrect nonce size".to_string()),
     };
     let mut ciphertext = content;
-    let tag = hex::decode(&params.tag).map_err(|_| "Tag hex invalide")?;
+    let tag = hex::decode(&params.tag).map_err(|_| "Invalid tag hex")?;
     ciphertext.extend_from_slice(&tag);
     let cipher = Aes256Gcm::new(aes_gcm::Key::<Aes256Gcm>::from_slice(&master_key));
-    let db = cipher.decrypt(Nonce::from_slice(&nonce), ciphertext.as_ref()).map_err(|_| "Erreur de déchiffrement du vault")?;
-    Ok(String::from_utf8(db).map_err(|_| "UTF-8 invalide")?)
+    let db = cipher.decrypt(Nonce::from_slice(&nonce), ciphertext.as_ref()).map_err(|_| "Vault decryption error")?;
+    Ok(String::from_utf8(db).map_err(|_| "Invalid UTF-8")?)
 }

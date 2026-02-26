@@ -70,7 +70,7 @@ pub fn run_tui(decrypted: &str, file_path: &std::path::Path) -> Result<(), Box<d
                 };
 
                 let block = Block::default()
-                    .title("Contenu déchiffré")
+                    .title("Decrypted content")
                     .borders(Borders::ALL);
 
                 let paragraph = Paragraph::new(text)
@@ -87,7 +87,7 @@ pub fn run_tui(decrypted: &str, file_path: &std::path::Path) -> Result<(), Box<d
 
                 // Help bar
                 let help = Paragraph::new(
-                    "[e] Exporter  [q] Quitter  [↑/↓] Scroll  [/] Recherche  [n/N] Suivant/Précédent"
+                    "[e] Export  [q] Quit  [↑/↓] Scroll  [/] Search  [n/N] Next/Prev"
                 );
                 f.render_widget(help, Rect {
                     x: size.x,
@@ -107,7 +107,7 @@ pub fn run_tui(decrypted: &str, file_path: &std::path::Path) -> Result<(), Box<d
 
                 // Search bar
                 if search_mode {
-                    let search_bar = Paragraph::new(format!("Recherche : {}", search_query));
+                    let search_bar = Paragraph::new(format!("Search: {}", search_query));
                     f.render_widget(search_bar, Rect {
                         x: size.x,
                         y: size.y + content_height as u16 + 2,
@@ -139,9 +139,9 @@ pub fn run_tui(decrypted: &str, file_path: &std::path::Path) -> Result<(), Box<d
                                     if !search_results.is_empty() {
                                         scroll = search_results[0];
                                         search_index = 0;
-                                        status = format!("{} résultats trouvés", search_results.len());
+                                        status = format!("{} results found", search_results.len());
                                     } else {
-                                        status = "Aucun résultat".to_string();
+                                        status = "No results".to_string();
                                     }
 
                                     search_mode = false;
@@ -171,17 +171,17 @@ pub fn run_tui(decrypted: &str, file_path: &std::path::Path) -> Result<(), Box<d
                                         }
                                     }
 
-                                    if let Some(path) = FileDialog::new()
-                                        .set_title("Enregistrer le fichier déchiffré")
+                                        if let Some(path) = FileDialog::new()
+                                        .set_title("Save decrypted file")
                                         .set_file_name(&default_name)
                                         .save_file()
                                     {
                                         match fs::write(&path, decrypted) {
-                                            Ok(_) => status = format!("Exporté vers {}", path.display()),
-                                            Err(e) => status = format!("Erreur export : {}", e),
+                                            Ok(_) => status = format!("Exported to {}", path.display()),
+                                            Err(e) => status = format!("Export error: {}", e),
                                         }
                                     } else {
-                                        status = "Export annulé".to_string();
+                                        status = "Export cancelled".to_string();
                                     }
                                 }
                                 KeyCode::Char('/') => {
@@ -221,6 +221,6 @@ pub fn run_tui(decrypted: &str, file_path: &std::path::Path) -> Result<(), Box<d
     match result {
         Ok(Ok(_)) => Ok(()),
         Ok(Err(e)) => Err(e),
-        Err(_) => Err("Erreur interne dans le TUI (panic)".into()),
+        Err(_) => Err("Internal TUI error (panic)".into()),
     }
 }

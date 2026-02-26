@@ -11,26 +11,26 @@ use std::io::Read;
 
 
 fn main() {
-    // Sélection du fichier
+    // File selection
     let file_path = match io::prompt_file_path() {
         Some(p) => p,
         None => {
-            eprintln!("Aucun fichier sélectionné.");
+            eprintln!("No file selected.");
             return;
         }
     };
 
-    // Lecture du fichier
+    // Reading file
     let mut file = match File::open(&file_path) {
         Ok(f) => f,
         Err(_) => {
-            eprintln!("Impossible d'ouvrir le fichier.");
+            eprintln!("Unable to open file.");
             return;
         }
     };
     let mut content = String::new();
     if file.read_to_string(&mut content).is_err() {
-        eprintln!("Erreur de lecture du fichier.");
+        eprintln!("Error reading file.");
         return;
     }
 
@@ -38,33 +38,33 @@ fn main() {
     let vault: Vault = match serde_json::from_str(&content) {
         Ok(v) => v,
         Err(_) => {
-            eprintln!("Fichier JSON invalide.");
+            eprintln!("Invalid JSON file.");
             return;
         }
     };
 
-    // Saisie du mot de passe sécurisée (rpassword)
-    let password = match rpassword::prompt_password("Mot de passe : ") {
+    // Secure password input (rpassword)
+    let password = match rpassword::prompt_password("Password: ") {
         Ok(p) => p,
         Err(_) => {
-            eprintln!("Mot de passe non saisi.");
+            eprintln!("Password not entered.");
             return;
         }
     };
 
-    // Déchiffrement
+    // Decryption
     let decrypted = match decrypt::decrypt_vault(&vault, password.as_bytes()) {
         Ok(db) => db,
         Err(e) => {
-            eprintln!("Erreur : {}", e);
+            eprintln!("Error: {}", e);
             return;
         }
     };
 
-    // Affichage TUI
+    // Display TUI
         use crate::tui::run_tui;
         if let Err(e) = run_tui(&decrypted, &file_path) {
-        eprintln!("Erreur TUI : {}", e);
+        eprintln!("TUI error: {}", e);
     }
 }
 
